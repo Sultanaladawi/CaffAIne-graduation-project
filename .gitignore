@@ -32,7 +32,13 @@ npm-debug.log*
 # Vercel
 .vercel/
 
-#claude 
+# Claude
 .claude/
-.env
 
+# Graduation Project Private Files
+graduation_project_*
+*.pptx
+*.docx
+*.pdf
+*.zip
+*.rar
