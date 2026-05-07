@@ -73,6 +73,19 @@ app.use('/images', express.static(path.join(__dirname, 'public', 'images')));
 
 app.use((req, res, next) => {
   console.log(`[Server] ${req.method} ${req.url}`);
+
+  const adminEmail = req.headers['x-admin-email'];
+  const adminName = req.headers['x-admin-name'];
+  
+  req.logAdminAction = (action, details) => {
+    if (adminEmail) {
+      const q = 'INSERT INTO admin_logs (admin_email, admin_name, action, details) VALUES (?, ?, ?, ?)';
+      db.query(q, [adminEmail, adminName || 'Unknown', action, details], (err) => {
+        if (err) console.error('[Audit Log Error]', err.message);
+      });
+    }
+  };
+
   next();
 });
 
@@ -579,6 +592,18 @@ db.query(`
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 `, (err) => { if (err) console.error('Ensure ai_insights_cache table error:', err); });
 
+// Ensure admin_logs table exists
+db.query(`
+  CREATE TABLE IF NOT EXISTS admin_logs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    admin_email VARCHAR(255) NOT NULL,
+    admin_name VARCHAR(255) DEFAULT NULL,
+    action VARCHAR(255) NOT NULL,
+    details TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+`, (err) => { if (err) console.error('Ensure admin_logs table error:', err); });
+
 // Ensure non-zero prices for existing addons (One-time fix)
 db.query("UPDATE addons SET price = 0.50 WHERE price = 0", (err) => {
   if (err) console.error('Update addon prices error:', err);
@@ -952,6 +977,7 @@ app.put('/api/extend-order/:id', (req, res) => {
       console.error('[Extend API] SQL Error:', err.message);
       return res.status(500).json({ error: err.message });
     }
+    if (req.logAdminAction) req.logAdminAction('Extend Order Time', `Extended order #${id} by ${cleanMins} mins`);
     res.json({ success: true, message: `Preparation time extended by ${cleanMins} minutes` });
   });
 });
@@ -969,6 +995,8 @@ app.put('/api/mark-ready/:id', (req, res) => {
       console.error('[Mark Ready Error]:', err.message);
       return res.status(500).json({ error: err.message });
     }
+
+    if (req.logAdminAction) req.logAdminAction('Update Order Status', `Marked order #${id} as ${status}`);
 
     // 2. Success response
     res.json({ success: true, message: `Order status updated to ${status}` });
@@ -1107,6 +1135,9 @@ app.post('/api/admin/login', (req, res) => {
   const user = team.find(u => u.email === email?.toLowerCase().trim() && u.pass === password);
   
   if (user) {
+    db.query('INSERT INTO admin_logs (admin_email, admin_name, action, details) VALUES (?, ?, ?, ?)', 
+      [user.email, user.name, 'Login', 'Logged into the system'], () => {});
+
     res.json({ 
       success: true, 
       user: { id: user.email, email: user.email, name: user.name, role: user.role } 
@@ -1129,6 +1160,7 @@ app.post('/api/inventory', (req, res) => {
         console.error('[Inventory] Add SQL Error:', err.message);
         return res.status(500).json({ error: `SQL Error: ${err.message}` });
       }
+      if (req.logAdminAction) req.logAdminAction('Add Inventory Item', `Added item: ${item_name}`);
       res.status(201).json({ 
         id: result.insertId, 
         item_name, 
@@ -1157,6 +1189,7 @@ app.put('/api/update-stock-item/:id', (req, res) => {
         console.error('[Inventory] Update SQL Error:', err.message);
         return res.status(500).json({ error: `SQL Error: ${err.message}` });
       }
+      if (req.logAdminAction) req.logAdminAction('Update Stock', `Updated ${item_name} to ${cleanQty} ${unit}`);
       res.json({ message: 'Item updated' });
     });
   } catch (error) {
@@ -1434,6 +1467,7 @@ app.post('/api/offers', (req, res) => {
       console.error('[Offers] POST Error:', err.message);
       return res.status(500).json({ error: err.message });
     }
+    if (req.logAdminAction) req.logAdminAction('Add Offer', `Added offer for ${product_name}`);
     res.json({ message: 'Offer created', id: result.insertId });
   });
 });
@@ -1448,6 +1482,7 @@ app.put('/api/offers/:id', (req, res) => {
       console.error('[Offers] PUT Error:', err.message);
       return res.status(500).json({ error: err.message });
     }
+    if (req.logAdminAction) req.logAdminAction('Edit Offer', `Updated offer for ${product_name}`);
     res.json({ message: 'Offer updated' });
   });
 });
@@ -1459,6 +1494,7 @@ app.delete('/api/offers/:id', (req, res) => {
       console.error('[Offers] DELETE Error:', err.message);
       return res.status(500).json({ error: err.message });
     }
+    if (req.logAdminAction) req.logAdminAction('Delete Offer', `Deleted offer ID: ${id}`);
     res.json({ message: 'Offer deleted' });
   });
 });
@@ -1541,6 +1577,7 @@ app.post('/api/products', async (req, res) => {
     }
 
     await conn.commit();
+    if (req.logAdminAction) req.logAdminAction('Add Product', `Added new product: ${name}`);
     res.status(201).json({ message: 'Product created successfully', id: productId });
   } catch (err) {
     if (conn) await conn.rollback();
@@ -1590,6 +1627,7 @@ app.put('/api/products/:id', async (req, res) => {
     }
 
     await conn.commit();
+    if (req.logAdminAction) req.logAdminAction('Edit Product', `Updated product: ${name}`);
     res.json({ message: 'Product updated successfully' });
   } catch (err) {
     if (conn) await conn.rollback();
@@ -1610,6 +1648,7 @@ app.delete('/api/products/:id', async (req, res) => {
     // 2. Delete from menu_items
     await promiseDb.query("DELETE FROM menu_items WHERE id = ?", [id]);
     
+    if (req.logAdminAction) req.logAdminAction('Delete Product', `Deleted product ID: ${id}`);
     res.json({ message: 'Product and associated recipes deleted successfully' });
   } catch (err) {
     console.error('Delete Error:', err.message);
@@ -1828,7 +1867,7 @@ Current UK time is ${currentDateTime}.`;
         ? jobApplications.map(a => `${a.name} for ${a.position} (Status: ${a.status}, Date: ${a.date})`).join(', ')
         : 'No recent job applications.';
 
-      const categoryMap = "1: Cold Drinks & Ice Cream, 2: Coffee & Espresso, 3: Food & Pastries, 4: Soft Drinks & Other, 5: Sweets & Cakes, 6: Tea & Other Drinks";
+      const categoryMap = "1: Cold Drinks & Ice Cream, 2: Coffee & Espresso, 3: Food & Pastries, 5: Sweets & Cakes, 6: Tea & Infusions";
 
       const latestItems = latestItemRes.status === 'fulfilled' ? latestItemRes.value[0] : [];
       const latestItemsSummary = latestItems.length > 0 
@@ -1938,6 +1977,26 @@ Do NOT mention internal sales numbers or revenue to customers.`;
   }
 });
 
+// Admin Audit Logs API
+app.get('/api/admin/logs', (req, res) => {
+  db.query('SELECT * FROM admin_logs ORDER BY created_at DESC LIMIT 200', (err, results) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(results);
+  });
+});
+
+app.post('/api/admin/log', (req, res) => {
+  const { action, details } = req.body;
+  if (req.logAdminAction) {
+    req.logAdminAction(action, details);
+  }
+  res.json({ success: true });
+});
+
+app.get('/api/test-ai', (req, res) => {
+  res.json({ message: 'AI Server is reachable!', openai: !!openai });
+});
+
 // Serve static files from the React build folder
 app.use(express.static(path.join(__dirname, 'build')));
 
@@ -1946,9 +2005,7 @@ app.get(/.*/, (req, res) => {
   res.sendFile(path.join(__dirname, 'build', 'index.html'));
 });
 
-app.get('/api/test-ai', (req, res) => {
-  res.json({ message: 'AI Server is reachable!', openai: !!openai });
-});
+
 
 // START SERVER
 app.listen(PORT, '0.0.0.0', () => {
