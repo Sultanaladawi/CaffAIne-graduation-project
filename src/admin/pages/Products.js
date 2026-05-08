@@ -389,7 +389,9 @@ const Products = () => {
         `PRD-${String(index + 1).padStart(3, '0')}`,
         item.name || 'Unnamed',
         dbCategories.find(c => String(c.id) === String(item.category_id))?.name || dbCategories.find(c => String(c.id) === String(item.category_id))?.label || item.category_id || 'N/A',
-        `£${parseFloat(item.price_num || 0).toFixed(2)}`,
+        item.discounted_price 
+          ? `£${parseFloat(item.discounted_price).toFixed(2)} (Off: £${parseFloat(item.price_num).toFixed(2)})`
+          : `£${parseFloat(item.price_num || 0).toFixed(2)}`,
         item.available === 0 ? 'OUT OF STOCK' : 'AVAILABLE'
       ]);
 
@@ -1101,7 +1103,21 @@ const Products = () => {
                       {dbCategories.find(c => String(c.id) === String(item.category_id))?.name || dbCategories.find(c => String(c.id) === String(item.category_id))?.label || <span style={{color: '#ff4d4d'}}>Unlinked</span>}
                     </td>
                     <td style={{ padding: '16px 12px', fontWeight: 'bold', color: colors.crema, fontSize: '0.95rem' }}>
-                      £{parseFloat(item.price_num || 0).toFixed(2)}
+                      <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        <span style={{ 
+                          textDecoration: item.discounted_price ? 'line-through' : 'none', 
+                          opacity: item.discounted_price ? 0.5 : 1,
+                          fontSize: item.discounted_price ? '0.8rem' : '0.95rem',
+                          color: item.discounted_price ? colors.latte : colors.crema
+                        }}>
+                          £{parseFloat(item.price_num || 0).toFixed(2)}
+                        </span>
+                        {item.discounted_price && (
+                          <span style={{ color: '#38ef7d', fontSize: '1rem', textShadow: '0 0 10px rgba(56, 239, 125, 0.2)' }}>
+                            £{parseFloat(item.discounted_price).toFixed(2)}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td style={{ padding: '12px' }}>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
