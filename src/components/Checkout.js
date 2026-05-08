@@ -77,9 +77,20 @@ export default function Checkout({ onClose, onBack }) {
     setSelectedOffer(offer);
   };
 
-  const discountMultiplier = selectedOffer ? (1 - (selectedOffer.discount_percent / 100)) : 1;
+  const discountAmount = items.reduce((acc, item) => {
+    if (selectedOffer) {
+      const itemName = (item.name || "").toLowerCase();
+      const offerProd = (selectedOffer.product_name || "").toLowerCase();
+      const matches = itemName.includes(offerProd) || offerProd.includes(itemName) || offerProd === 'all';
+      if (matches) {
+        return acc + (item.priceNum * item.qty * (selectedOffer.discount_percent / 100));
+      }
+    }
+    return acc;
+  }, 0);
+
+  const subtotalAfterDiscount = totalPrice - discountAmount;
   const DELIVERY_FEE = 3.00;
-  const subtotalAfterDiscount = totalPrice * discountMultiplier;
   const finalPrice = orderType === 'delivery' ? subtotalAfterDiscount + DELIVERY_FEE : subtotalAfterDiscount;
 
   useEffect(() => {
@@ -208,11 +219,23 @@ export default function Checkout({ onClose, onBack }) {
               const addonNames = item.addons.map(a => a.name).join(', ');
               finalName = `${item.name} (+ ${addonNames})`;
             }
+
+            // Calculate item price after potential discount
+            let itemPrice = item.priceNum;
+            if (selectedOffer) {
+              const itemName = (item.name || "").toLowerCase();
+              const offerProd = (selectedOffer.product_name || "").toLowerCase();
+              const matches = itemName.includes(offerProd) || offerProd.includes(itemName) || offerProd === 'all';
+              if (matches) {
+                itemPrice = item.priceNum * (1 - (selectedOffer.discount_percent / 100));
+              }
+            }
+
             return {
               id: item.id,
               name: finalName,
               qty: item.qty,
-              priceNum: item.priceNum,
+              priceNum: itemPrice,
               addons: item.addons || []
             };
           }),
@@ -421,7 +444,7 @@ export default function Checkout({ onClose, onBack }) {
             {selectedOffer && (
               <div className={styles.sumItem} style={{ color: '#c4a484', fontWeight: 'bold', marginTop: '10px' }}>
                 <span>Discount ({selectedOffer.discount_percent}%)</span>
-                <span>-{formatPrice(totalPrice * (selectedOffer.discount_percent / 100))}</span>
+                <span>-{formatPrice(discountAmount)}</span>
               </div>
             )}
 
