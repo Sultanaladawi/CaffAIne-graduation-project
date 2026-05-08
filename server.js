@@ -1037,7 +1037,10 @@ app.get('/api/products', async (req, res) => {
   try {
     const promiseDb = db.promise();
     
-    // 1. Fetch all available addons to have a name-to-price mapping for fallback
+    // 1. Fetch active offers to calculate discounted prices
+    const [offers] = await promiseDb.query("SELECT * FROM offers WHERE active = 1 AND (end_date IS NULL OR end_date >= CURDATE())");
+
+    // 2. Fetch all available addons to have a name-to-price mapping for fallback
     const [allAddons] = await promiseDb.query('SELECT name, price FROM addons');
     const addonPriceMap = {};
     allAddons.forEach(a => {
@@ -1072,6 +1075,18 @@ app.get('/api/products', async (req, res) => {
     `);
 
     const products = results.map(p => {
+      // Find matching offer
+      const matchingOffer = offers.find(o => {
+        const prodName = (p.name || '').toLowerCase();
+        const offerProd = (o.product_name || '').toLowerCase();
+        return prodName.includes(offerProd) || offerProd.includes(prodName) || offerProd === 'all';
+      });
+
+      let discountedPrice = null;
+      if (matchingOffer && p.price_num) {
+        discountedPrice = parseFloat(p.price_num) * (1 - (matchingOffer.discount_percent / 100));
+      }
+
       // 1. Structured Addons from bridge table
       let addonsArray = p.linked_addons ? p.linked_addons.split(',').map(pair => {
         const [id, name, price] = pair.split('|');
@@ -1101,7 +1116,8 @@ app.get('/api/products', async (req, res) => {
         ...p,
         isOutOfStock: !!p.isOutOfStock,
         linkedAddons: addonsArray,
-        linkedTags: tagsArray
+        linkedTags: tagsArray,
+        discounted_price: discountedPrice
       };
     });
 
