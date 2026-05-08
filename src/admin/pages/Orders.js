@@ -253,9 +253,15 @@ const Orders = () => {
                     )}
                   </tbody>
                 </table>
-                <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'space-between', color: theme.text, fontWeight: 'bold', fontSize: '1.1rem' }}>
+                {selectedOrder.order_type?.toLowerCase() === 'delivery' && (
+                  <div style={{ marginTop: '15px', marginBottom: '10px', display: 'flex', justifyContent: 'space-between', color: 'rgba(255,255,255,0.6)', fontWeight: 'bold', fontSize: '0.95rem', borderTop: `1px dashed ${theme.border}`, paddingTop: '10px' }}>
+                    <span>Delivery Service Fee:</span>
+                    <span style={{ color: theme.success }}>£3.00</span>
+                  </div>
+                )}
+                <div style={{ marginTop: selectedOrder.order_type?.toLowerCase() === 'delivery' ? '5px' : '20px', display: 'flex', justifyContent: 'space-between', color: theme.text, fontWeight: 'bold', fontSize: '1.2rem', borderTop: selectedOrder.order_type?.toLowerCase() === 'delivery' ? 'none' : `1px solid ${theme.border}`, paddingTop: selectedOrder.order_type?.toLowerCase() === 'delivery' ? '0' : '15px' }}>
                   <span>Total Amount:</span>
-                  <span style={{ color: theme.primary }}>£{parseFloat(selectedOrder.total_amount).toFixed(2)}</span>
+                  <span style={{ color: theme.primary, fontSize: '1.4rem' }}>£{parseFloat(selectedOrder.total_amount).toFixed(2)}</span>
                 </div>
               </div>
             </div>
