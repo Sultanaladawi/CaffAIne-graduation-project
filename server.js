@@ -36,11 +36,11 @@ const API_KEY = (process.env.OPENAI_API_KEY || '').trim();
 if (API_KEY && API_KEY !== 'your_key_here') {
   const IS_GITHUB = API_KEY.startsWith('github_') || API_KEY.startsWith('ghp_');
   const BASE_URL = IS_GITHUB ? 'https://models.inference.ai.azure.com' : 'https://api.openai.com/v1';
-  
+
   openai = new OpenAI({
     apiKey: API_KEY,
     baseURL: BASE_URL,
-    timeout: 120000, 
+    timeout: 120000,
     maxRetries: 2
   });
 
@@ -56,7 +56,7 @@ const app = express();
 const PORT = process.env.SERVER_PORT || 3005; // Changed to 3005 to match the React proxy in package.json
 
 app.use(cors({
-  origin: function(origin, callback) {
+  origin: function (origin, callback) {
     // Allow any localhost origin (for dev: 3000, 3001, 3002, 3003, etc.) and no-origin (curl/Postman)
     if (!origin || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
       return callback(null, true);
@@ -76,7 +76,7 @@ app.use((req, res, next) => {
 
   const adminEmail = req.headers['x-admin-email'];
   const adminName = req.headers['x-admin-name'];
-  
+
   req.logAdminAction = (action, details) => {
     if (adminEmail) {
       const q = 'INSERT INTO admin_logs (admin_email, admin_name, action, details) VALUES (?, ?, ?, ?)';
@@ -127,14 +127,14 @@ db.getConnection((err, connection) => {
     return;
   }
   console.log(`Database connected successfully via Pool`);
-  
+
   // --- Automated Schema Verification ---
   const checkColumns = async () => {
     try {
       const promiseDb = db.promise();
       const [columns] = await promiseDb.query("SHOW COLUMNS FROM orders");
       const columnNames = columns.map(c => c.Field);
-      
+
       if (!columnNames.includes('phone')) {
         console.log('[Migration] Adding "phone" column to orders...');
         await promiseDb.query("ALTER TABLE orders ADD COLUMN phone VARCHAR(50) DEFAULT NULL");
@@ -143,7 +143,7 @@ db.getConnection((err, connection) => {
         console.log('[Migration] Adding "delivery_address" column to orders...');
         await promiseDb.query("ALTER TABLE orders ADD COLUMN delivery_address TEXT DEFAULT NULL");
       }
-      
+
       // FIX EXISTING 0 PRICE ADDONS IN ORDERS
       console.log('[Migration] Checking for 0-price items in order_items...');
       try {
@@ -151,10 +151,10 @@ db.getConnection((err, connection) => {
         for (const zi of zeroItems) {
           const [addRes] = await promiseDb.query("SELECT price FROM addons WHERE name = ?", [zi.item_name]);
           if (addRes && addRes.length > 0 && parseFloat(addRes[0].price) > 0) {
-             const fixedPrice = parseFloat(addRes[0].price);
-             await promiseDb.query("UPDATE order_items SET price = ? WHERE id = ?", [fixedPrice, zi.id]);
-             await promiseDb.query("UPDATE orders SET total_amount = total_amount + ? WHERE id = ?", [fixedPrice * zi.quantity, zi.order_id]);
-             console.log(`[Migration] Fixed price for addon '${zi.item_name}' in order #${zi.order_id}`);
+            const fixedPrice = parseFloat(addRes[0].price);
+            await promiseDb.query("UPDATE order_items SET price = ? WHERE id = ?", [fixedPrice, zi.id]);
+            await promiseDb.query("UPDATE orders SET total_amount = total_amount + ? WHERE id = ?", [fixedPrice * zi.quantity, zi.order_id]);
+            console.log(`[Migration] Fixed price for addon '${zi.item_name}' in order #${zi.order_id}`);
           }
         }
       } catch (e) {
@@ -173,11 +173,11 @@ db.getConnection((err, connection) => {
 
 // --- PRIMARY ORDERS API (Top Priority) ---
 app.post('/api/orders', async (req, res) => {
-  
+
   console.log('[Server] Body:', JSON.stringify(req.body, null, 2));
 
   const { customer_name, email, total_amount, cartItems, order_type, delivery_address, phone } = req.body;
-  
+
   // Basic validation: Email is now optional, but name, items and phone are required
   if (!customer_name || !Array.isArray(cartItems) || cartItems.length === 0 || !phone) {
     console.error('[Server] Order Error: Missing required fields (Name, Items, or Phone)');
@@ -186,13 +186,13 @@ app.post('/api/orders', async (req, res) => {
 
   const totalAmount = parseFloat(total_amount);
   const promiseDb = db.promise();
-  
+
   const conn = await promiseDb.getConnection();
-  
+
   try {
     await conn.beginTransaction();
     console.log('[Server] Transaction started');
-    
+
     // Check stock
     for (const item of cartItems) {
       const productId = parseInt(item.id, 10);
@@ -205,7 +205,7 @@ app.post('/api/orders', async (req, res) => {
         JOIN inventory i ON r.inventory_id = i.id
         WHERE r.menu_item_id = ?
       `, [productId]);
-      
+
       for (const recipe of ingredients) {
         const requiredTotal = parseFloat(recipe.quantity_required) * quantity;
         if (recipe.stock_qty < requiredTotal) {
@@ -228,7 +228,7 @@ app.post('/api/orders', async (req, res) => {
       const productId = parseInt(item.id, 10);
       const quantity = parseFloat(item.qty);
       let price = parseFloat(item.priceNum);
-      
+
       // Auto-correct missing or zero prices
       if (isNaN(price) || price === 0) {
         const [addonRows] = await conn.query("SELECT price FROM addons WHERE name = ?", [item.name]);
@@ -247,12 +247,12 @@ app.post('/api/orders', async (req, res) => {
       }
 
       calculatedTotal += price * quantity;
-      
+
       await conn.query(
         "INSERT INTO order_items (order_id, product_id, item_name, quantity, price) VALUES (?, ?, ?, ?, ?)",
         [orderId, isNaN(productId) ? null : productId, item.name, quantity, price]
       );
-      
+
       // Deduct product recipe
       if (!isNaN(productId)) {
         const [recipeSteps] = await conn.query("SELECT inventory_id, quantity_required FROM recipes WHERE menu_item_id = ?", [productId]);
@@ -308,14 +308,14 @@ const getAutoStoreStatus = () => {
   if (day === 0) {
     return (currentTime >= 1000 && currentTime < 1600) ? 'open' : 'closed';
   }
-  
+
   return 'closed';
 };
 
 app.get('/api/store-status', (req, res) => {
   db.query('SELECT value FROM site_settings WHERE `key` = ?', ['store_status'], (err, results) => {
     if (err) return res.status(500).json({ error: err.message });
-    
+
     let mode = results.length > 0 ? results[0].value : 'auto';
     let currentState = mode;
 
@@ -327,8 +327,8 @@ app.get('/api/store-status', (req, res) => {
       currentState = 'closed';
     }
 
-    res.json({ 
-      mode: mode, 
+    res.json({
+      mode: mode,
       status: currentState,
       display: mode === 'auto' ? `Automatic (${currentState.toUpperCase()})` : mode.replace('_', ' ').toUpperCase()
     });
@@ -337,11 +337,11 @@ app.get('/api/store-status', (req, res) => {
 
 app.post('/api/store-status', (req, res) => {
   const { status } = req.body; // Expecting 'manual_open', 'manual_closed', or 'auto'
-  db.query('INSERT INTO site_settings (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = ?', 
-  ['store_status', status, status], (err) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ success: true, mode: status });
-  });
+  db.query('INSERT INTO site_settings (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = ?',
+    ['store_status', status, status], (err) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ success: true, mode: status });
+    });
 });
 // ------------------------------------------
 
@@ -369,7 +369,7 @@ db.query(`
     status VARCHAR(50) DEFAULT 'new',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-`, (err) => { 
+`, (err) => {
   if (err) console.error('Ensure job_applications table error:', err);
   else {
     // Also ensure 'status' column exists if the table was already there without it
@@ -434,7 +434,7 @@ let categoryNameColumn = 'name'; // Default
 // --- DATA INTEGRITY: REPAIR CATEGORY LINKS ---
 db.query("SELECT * FROM categories", (err, categories) => {
   if (err) return console.error('Category Check Error:', err);
-  
+
   if (categories.length === 0) {
     db.query("INSERT INTO categories (name) VALUES ('Coffee'), ('Drinks'), ('Food'), ('Sweets')", (iErr) => {
       if (!iErr) console.log('[Data Integrity] Initialized default categories.');
@@ -442,9 +442,9 @@ db.query("SELECT * FROM categories", (err, categories) => {
   } else {
     // Detect which column is used for the name (name, label, title, etc.)
     const firstRow = categories[0];
-    categoryNameColumn = Object.keys(firstRow).find(key => 
+    categoryNameColumn = Object.keys(firstRow).find(key =>
       ['name', 'label', 'title', 'category_name', 'name_ar'].includes(key.toLowerCase())
-    ) || Object.keys(firstRow)[1]; 
+    ) || Object.keys(firstRow)[1];
 
     console.log(`[Data Integrity] Detected Category Name Column: '${categoryNameColumn}'`);
     console.log(`[Data Integrity] Current Categories:`, categories.map(c => `[ID:${c.id} Name:${c[categoryNameColumn]}]`).join(', '));
@@ -465,7 +465,7 @@ db.query("SELECT * FROM categories", (err, categories) => {
       const newId = catMap[oldKey];
       if (newId && newId != oldKey) {
         db.query("UPDATE menu_items SET category_id = ? WHERE category_id = ?", [newId, oldKey], (uErr) => {
-           if (!uErr) console.log(`[Migration] Migrated legacy category '${oldKey}' -> New ID: ${newId}`);
+          if (!uErr) console.log(`[Migration] Migrated legacy category '${oldKey}' -> New ID: ${newId}`);
         });
       }
     });
@@ -484,17 +484,17 @@ db.query("SELECT * FROM categories", (err, categories) => {
       const targetId = categories.find(c => c.id === rec.key)?.id;
       if (targetId && targetId !== 'cold') {
         rec.keywords.forEach(word => {
-          db.query("UPDATE menu_items SET category_id = ? WHERE category_id = 'cold' AND (name LIKE ? OR description LIKE ?)", 
-          [targetId, `%${word}%`, `%${word}%`], (err, res) => {
-            if (!err && res.changedRows > 0) console.log(`[Recovery] Moved ${res.changedRows} items back to '${targetId}' based on keyword '${word}'`);
-          });
+          db.query("UPDATE menu_items SET category_id = ? WHERE category_id = 'cold' AND (name LIKE ? OR description LIKE ?)",
+            [targetId, `%${word}%`, `%${word}%`], (err, res) => {
+              if (!err && res.changedRows > 0) console.log(`[Recovery] Moved ${res.changedRows} items back to '${targetId}' based on keyword '${word}'`);
+            });
         });
       }
     });
 
     // Final cleanup: only link truly empty/null items to the default category
     db.query("UPDATE menu_items SET category_id = ? WHERE category_id IS NULL OR category_id = ''", [categories[0].id], (err, result) => {
-       if (!err && result.changedRows > 0) console.log(`[Data Integrity] Linked ${result.changedRows} orphaned items to default: ${categories[0].id}`);
+      if (!err && result.changedRows > 0) console.log(`[Data Integrity] Linked ${result.changedRows} orphaned items to default: ${categories[0].id}`);
     });
   }
 });
@@ -617,10 +617,10 @@ db.query("UPDATE addons SET price = 0.50 WHERE price = 0", (err) => {
 // Already existing POST endpoint for contact
 app.post('/api/contact', (req, res) => {
   const { name, email, message } = req.body;
-  if(!name || !email || !message) return res.status(400).json({ error: 'All fields required' });
-  
+  if (!name || !email || !message) return res.status(400).json({ error: 'All fields required' });
+
   db.query('INSERT INTO contact_messages (name, email, message, is_read) VALUES (?, ?, ?, 0)', [name, email, message], (err, result) => {
-    if(err) return res.status(500).json({ error: err.message });
+    if (err) return res.status(500).json({ error: err.message });
     res.status(201).json({ success: true, id: result.insertId });
   });
 });
@@ -659,7 +659,7 @@ app.get('/api/feedback', async (req, res) => {
       JOIN menu_items m ON pr.product_id = m.id 
       ORDER BY pr.created_at DESC
     `);
-    
+
     res.status(200).json({
       general: generalFeedback,
       store: storeReviews,
@@ -689,10 +689,10 @@ app.post('/api/feedback/product', (req, res) => {
   console.log('[Server] Received Product Feedback:', req.body);
   const { product_id, reviewer_name, comment, rating } = req.body;
   if (!product_id) {
-    
+
     return res.status(400).json({ error: 'Product ID is required' });
   }
-  
+
   const q = 'INSERT INTO product_reviews (product_id, reviewer_name, comment, rating) VALUES (?, ?, ?, ?)';
   db.query(q, [product_id, reviewer_name || 'Anonymous', comment, rating || 5], (err, result) => {
     if (err) {
@@ -734,7 +734,7 @@ app.get('/api/dashboard-stats', async (req, res) => {
     const [[orders]] = await promiseDb.query("SELECT COUNT(*) as count FROM orders");
     const [[sales]] = await promiseDb.query("SELECT COALESCE(SUM(total_amount),0) as total FROM orders");
     const [lowStockItems] = await promiseDb.query("SELECT item_name, quantity, min_threshold FROM inventory WHERE quantity <= min_threshold");
-    
+
     // Fetch last 7 days of sales for the bar chart
     const [dailySales] = await promiseDb.query(`
       SELECT DATE(created_at) as date, SUM(total_amount) as total 
@@ -838,7 +838,7 @@ app.put('/api/addons/:id', async (req, res) => {
   if (!name) return res.status(400).json({ error: 'Missing name' });
   try {
     const promiseDb = db.promise();
-    await promiseDb.query('UPDATE addons SET name = ?, price = ?, inventory_id = ? WHERE id = ?', 
+    await promiseDb.query('UPDATE addons SET name = ?, price = ?, inventory_id = ? WHERE id = ?',
       [name.trim(), price || 0, inventory_id || null, id]);
     res.json({ success: true, id, name: name.trim(), price, inventory_id });
   } catch (err) {
@@ -971,7 +971,7 @@ app.put('/api/extend-order/:id', (req, res) => {
     SET estimated_ready_at = DATE_ADD(GREATEST(COALESCE(estimated_ready_at, NOW()), NOW()), INTERVAL ${cleanMins} MINUTE),
         status = 'preparing' 
     WHERE id = ?`;
-  
+
   db.query(query, [id], (err, result) => {
     if (err) {
       console.error('[Extend API] SQL Error:', err.message);
@@ -1036,7 +1036,7 @@ app.get('/api/order-items/:orderId', async (req, res) => {
 app.get('/api/products', async (req, res) => {
   try {
     const promiseDb = db.promise();
-    
+
     // 1. Fetch active offers to calculate discounted prices
     const [offers] = await promiseDb.query("SELECT * FROM offers WHERE active = 1 AND (end_date IS NULL OR end_date >= CURDATE())");
 
@@ -1147,16 +1147,16 @@ app.post('/api/admin/login', (req, res) => {
     { email: 'mohammad@coffee.com', pass: 'mohammad2026', name: 'Mohammad Al-Hadidi', role: 'admin' },
     { email: 'bashar@coffee.com', pass: 'bashar2026', name: 'Bashar Al-Dabbas', role: 'admin' }
   ];
-  
-  const user = team.find(u => u.email === email?.toLowerCase().trim() && u.pass === password);
-  
-  if (user) {
-    db.query('INSERT INTO admin_logs (admin_email, admin_name, action, details) VALUES (?, ?, ?, ?)', 
-      [user.email, user.name, 'Login', 'Logged into the system'], () => {});
 
-    res.json({ 
-      success: true, 
-      user: { id: user.email, email: user.email, name: user.name, role: user.role } 
+  const user = team.find(u => u.email === email?.toLowerCase().trim() && u.pass === password);
+
+  if (user) {
+    db.query('INSERT INTO admin_logs (admin_email, admin_name, action, details) VALUES (?, ?, ?, ?)',
+      [user.email, user.name, 'Login', 'Logged into the system'], () => { });
+
+    res.json({
+      success: true,
+      user: { id: user.email, email: user.email, name: user.name, role: user.role }
     });
   } else {
     res.status(401).json({ success: false, message: 'Invalid credentials' });
@@ -1168,7 +1168,7 @@ app.post('/api/inventory', (req, res) => {
     let { item_name, quantity, unit, min_threshold } = req.body;
     const cleanQty = parseFloat(convertNumerals(quantity).replace(/[^0-9.]/g, '')) || 0;
     const cleanThreshold = parseInt(convertNumerals(min_threshold).replace(/[^0-9.]/g, '')) || 0;
-    
+
     console.log('[Inventory] Adding item:', { item_name, cleanQty, unit, cleanThreshold });
     const query = "INSERT INTO inventory (item_name, quantity, unit, min_threshold) VALUES (?, ?, ?, ?)";
     db.query(query, [item_name, cleanQty, unit, cleanThreshold], (err, result) => {
@@ -1177,12 +1177,12 @@ app.post('/api/inventory', (req, res) => {
         return res.status(500).json({ error: `SQL Error: ${err.message}` });
       }
       if (req.logAdminAction) req.logAdminAction('Add Inventory Item', `Added item: ${item_name}`);
-      res.status(201).json({ 
-        id: result.insertId, 
-        item_name, 
-        quantity: cleanQty, 
-        unit, 
-        min_threshold: cleanThreshold 
+      res.status(201).json({
+        id: result.insertId,
+        item_name,
+        quantity: cleanQty,
+        unit,
+        min_threshold: cleanThreshold
       });
     });
   } catch (error) {
@@ -1320,7 +1320,7 @@ app.post('/api/ai', async (req, res) => {
       const offersSummary = offersRes.status === 'fulfilled' && offersRes.value[0].length > 0 ? offersRes.value[0].map(o => `${o.discount_percent}% off ${o.product_name} (${o.reason})`).join(' | ') : 'No active offers right now.';
       const careersSummary = careersRes.status === 'fulfilled' && careersRes.value[0].length > 0 ? careersRes.value[0].map(c => `${c.title} (${c.type}) at ${c.location}`).join(' | ') : 'No active job openings right now.';
       context += `\nMenu: ${menuItems}\nOffers: ${offersSummary}\nJobs: ${careersSummary}`;
-    } catch(e) {
+    } catch (e) {
       console.warn('[AI] Context Fetch Error:', e.message);
     }
 
@@ -1517,12 +1517,12 @@ app.delete('/api/offers/:id', (req, res) => {
 
 // Reorder products
 app.put('/api/products/reorder', async (req, res) => {
-  const { order } = req.body; 
+  const { order } = req.body;
   if (!Array.isArray(order)) return res.status(400).json({ error: 'Invalid payload' });
-  
+
   try {
     // Use a more robust way to get promise-based DB
-    const pool = db.promise(); 
+    const pool = db.promise();
     for (const item of order) {
       if (!item.id) continue;
       await pool.query('UPDATE menu_items SET sort_order = ? WHERE id = ?', [item.sort_order, item.id]);
@@ -1537,7 +1537,7 @@ app.put('/api/products/reorder', async (req, res) => {
 
 // Create new product
 app.post('/api/products', async (req, res) => {
-  
+
   console.log('[Server] Received Body:', JSON.stringify(req.body, null, 2));
   let { name, price_num, description, available, category_id, image_url, tags, addons, addon_ids, tag_ids } = req.body;
 
@@ -1569,7 +1569,7 @@ app.post('/api/products', async (req, res) => {
     const params = [category_id || null, name, cleanPrice, price_display, description || null, tags || null, available ?? 1, image_url || null, addons || null, nextOrder];
     console.log('[Server] Executing INSERT with params:', params);
     const [result] = await conn.query(q, params);
-    
+
     const productId = result.insertId;
 
     // Sync Addons in bridge table
@@ -1607,10 +1607,10 @@ app.post('/api/products', async (req, res) => {
 app.put('/api/products/:id', async (req, res) => {
   const { id } = req.params;
   let { name, price_num, description, available, category_id, image_url, tags, addons, addon_ids, tag_ids } = req.body;
-  
+
   const pool = db.promise();
   let conn;
-  
+
   try {
     conn = await pool.getConnection();
     await conn.beginTransaction();
@@ -1660,10 +1660,10 @@ app.delete('/api/products/:id', async (req, res) => {
     const promiseDb = db.promise();
     // 1. Delete from recipes first
     await promiseDb.query("DELETE FROM recipes WHERE menu_item_id = ?", [id]);
-    
+
     // 2. Delete from menu_items
     await promiseDb.query("DELETE FROM menu_items WHERE id = ?", [id]);
-    
+
     if (req.logAdminAction) req.logAdminAction('Delete Product', `Deleted product ID: ${id}`);
     res.json({ message: 'Product and associated recipes deleted successfully' });
   } catch (err) {
@@ -1732,7 +1732,7 @@ app.get('/api/messages', (req, res) => {
 app.post('/api/messages', (req, res) => {
   const { user_msg, ai_msg } = req.body;
   if (!user_msg) return res.status(400).json({ error: 'user_msg is required' });
-  
+
   // Safety check for logging
   const uLog = String(user_msg || '').substring(0, 50);
   const aLog = String(ai_msg || '').substring(0, 50);
@@ -1767,7 +1767,7 @@ app.post('/api/ai-assistant-logs', (req, res) => {
 app.post('/api/ai-chat', async (req, res) => {
   const { message, isAdmin } = req.body;
   console.log(`\n[AI Request] Received: "${message?.substring(0, 50)}..." (isAdmin: ${!!isAdmin})`);
-  
+
   if (!message) {
     console.error('[AI Request] Error: Missing message');
     return res.status(400).json({ error: 'Message is required' });
@@ -1806,8 +1806,8 @@ Current UK time is ${currentDateTime}.`;
       ]);
 
       const [
-        ordersRes, productsRes, stockRes, topRes, 
-        typeRes, bestDayRes, recentOrdersRes, 
+        ordersRes, productsRes, stockRes, topRes,
+        typeRes, bestDayRes, recentOrdersRes,
         lowStockDetailsRes, feedbackRes, careersRes, offersRes, dailySalesRes,
         fullMenuRes, fullInventoryRes, contactMessagesRes, jobApplicationsRes,
         latestItemRes, productReviewsRes, storeStatusRes
@@ -1819,7 +1819,7 @@ Current UK time is ${currentDateTime}.`;
       const topProducts = topRes.status === 'fulfilled' ? topRes.value[0] : [];
       const orderTypes = typeRes.status === 'fulfilled' ? typeRes.value[0] : [];
       const bestDay = bestDayRes.status === 'fulfilled' ? bestDayRes.value[0][0] : null;
-      
+
       const recentOrders = recentOrdersRes.status === 'fulfilled' ? recentOrdersRes.value[0] : [];
       const lowStockDetails = lowStockDetailsRes.status === 'fulfilled' ? lowStockDetailsRes.value[0] : [];
       const recentFeedback = feedbackRes.status === 'fulfilled' ? feedbackRes.value[0] : [];
@@ -1830,55 +1830,55 @@ Current UK time is ${currentDateTime}.`;
       const fullInventory = fullInventoryRes.status === 'fulfilled' ? fullInventoryRes.value[0] : [];
       const contactMessages = contactMessagesRes.status === 'fulfilled' ? contactMessagesRes.value[0] : [];
       const jobApplications = jobApplicationsRes.status === 'fulfilled' ? jobApplicationsRes.value[0] : [];
-      const productReviews = productReviewsRes.status === 'fulfilled' ? productReviewsRes.value[0] : []; 
+      const productReviews = productReviewsRes.status === 'fulfilled' ? productReviewsRes.value[0] : [];
       const latestItem = latestItemRes.status === 'fulfilled' ? latestItemRes.value[0][0] : null;
-      
+
       const typeSummary = orderTypes.map(t => `${t.order_type}: ${t.count}`).join(', ');
       const topSummary = topProducts.map(p => `${p.name} (${p.sold} sold)`).join(', ');
       const bestDaySummary = bestDay ? `${new Date(bestDay.best_date).toLocaleDateString()} with £${parseFloat(bestDay.daily_rev).toFixed(2)}` : 'N/A';
-      
+
       const latestItemSummary = latestItem ? latestItem.name : 'Unknown';
-      
-      const recentOrdersSummary = recentOrders.length > 0 
+
+      const recentOrdersSummary = recentOrders.length > 0
         ? recentOrders.map(o => `ORD-${String(o.id).padStart(3, '0')} (${o.customer_name}, £${parseFloat(o.total_amount).toFixed(2)}, ${o.status}, ${o.time})`).join(' | ')
         : 'No recent orders.';
-        
+
       const lowStockSummary = lowStockDetails.length > 0
         ? lowStockDetails.map(i => `${i.item_name} (Qty:${i.quantity}, Min:${i.min_threshold})`).join(', ')
         : 'All stock levels are healthy.';
-        
+
       const feedbackSummary = recentFeedback.length > 0
         ? recentFeedback.map(f => `${f.rating}/5 from ${f.reviewer_name}: "${f.comment}"`).join(' | ')
         : 'No recent general feedback.';
-        
+
       const productReviewSummary = productReviews.length > 0
         ? productReviews.map(r => `${r.rating}/5 for ${r.product_name} by ${r.reviewer_name}: "${r.comment}"`).join(' | ')
         : 'No recent product reviews.';
-        
+
       const careersSummary = careers.length > 0 ? careers.map(c => `${c.title} (${c.type}) in ${c.location}`).join(', ') : 'No active job openings.';
       const offersSummary = offers.length > 0
         ? offers.map(o => JSON.stringify(o)).join(', ')
         : 'No active offers.';
-      
-      const dailySalesSummary = dailySales.length > 0 
+
+      const dailySalesSummary = dailySales.length > 0
         ? dailySales.map(d => `[${d.date}: ${d.count} orders, £${parseFloat(d.revenue).toFixed(2)}]`).join(' ')
         : 'No sales history yet.';
-        
-      const fullMenuSummary = fullMenu.length > 0 
-        ? fullMenu.map(m => `${m.name} [£${m.price_display}, Cat: ${m.category_name || 'General'}]`).join(', ') 
+
+      const fullMenuSummary = fullMenu.length > 0
+        ? fullMenu.map(m => `${m.name} [£${m.price_display}, Cat: ${m.category_name || 'General'}]`).join(', ')
         : 'Menu is empty.';
-        
+
       const healthyInventorySummary = "All other items are healthy.";
-        
+
       const approachingLow = fullInventory.filter(i => i.quantity > i.min_threshold && i.quantity <= i.min_threshold * 1.5);
       const approachingLowSummary = approachingLow.length > 0
         ? approachingLow.map(i => `${i.item_name} (Qty: ${i.quantity}, Min: ${i.min_threshold})`).join(', ')
         : 'No items are immediately approaching low stock.';
-        
+
       const contactMessagesSummary = contactMessages.length > 0
-        ? contactMessages.map(m => `${m.name}: "${m.message.substring(0,50)}..."`).join(' | ')
+        ? contactMessages.map(m => `${m.name}: "${m.message.substring(0, 50)}..."`).join(' | ')
         : 'No recent contact messages.';
-        
+
       const jobApplicationsSummary = jobApplications.length > 0
         ? jobApplications.map(a => `${a.name} for ${a.position} (Status: ${a.status}, Date: ${a.date})`).join(', ')
         : 'No recent job applications.';
@@ -1886,10 +1886,10 @@ Current UK time is ${currentDateTime}.`;
       const categoryMap = "1: Cold Drinks & Ice Cream, 2: Coffee & Espresso, 3: Food & Pastries, 5: Sweets & Cakes, 6: Tea & Infusions";
 
       const latestItems = latestItemRes.status === 'fulfilled' ? latestItemRes.value[0] : [];
-      const latestItemsSummary = latestItems.length > 0 
-        ? latestItems.map(i => `[ID:${i.id}] ${i.name} (Cat: ${i.category_name || 'N/A'}, Date: ${i.date})`).join(' | ') 
+      const latestItemsSummary = latestItems.length > 0
+        ? latestItems.map(i => `[ID:${i.id}] ${i.name} (Cat: ${i.category_name || 'N/A'}, Date: ${i.date})`).join(' | ')
         : 'None';
-      
+
       const storeMode = storeStatusRes.status === 'fulfilled' && storeStatusRes.value[0].length > 0 ? storeStatusRes.value[0][0].value : 'auto';
       let currentStatus = storeMode;
       if (storeMode === 'auto') currentStatus = getAutoStoreStatus();
@@ -1951,13 +1951,13 @@ Do NOT mention internal sales numbers or revenue to customers.`;
         promiseDb.query(`SELECT product_name, discount_percent, reason FROM offers WHERE active = 1`),
         promiseDb.query(`SELECT title, type, location FROM careers WHERE active = 1`)
       ]);
-      
+
       const menuItems = menuRes.status === 'fulfilled' ? menuRes.value[0].map(m => `${m.name} (£${m.price_display})`).join(', ') : 'Menu unavailable.';
       const offersSummary = offersRes.status === 'fulfilled' && offersRes.value[0].length > 0 ? offersRes.value[0].map(o => `${o.discount_percent}% off ${o.product_name}`).join(', ') : 'No offers.';
       const careersSummary = careersRes.status === 'fulfilled' && careersRes.value[0].length > 0 ? careersRes.value[0].map(c => `${c.title}`).join(', ') : 'No jobs.';
 
       businessContext += `\nMenu: ${menuItems.substring(0, 2000)}.\nOffers: ${offersSummary}.\nJobs: ${careersSummary}.`;
-    } catch(e) {
+    } catch (e) {
       console.warn('[AI] Customer Data Fetch Error:', e.message);
     }
   }
@@ -1987,8 +1987,8 @@ Do NOT mention internal sales numbers or revenue to customers.`;
   } catch (error) {
     console.error('AI Error:', error.message);
     // ALWAYS return a 200 status with a useful reply to prevent UI "Connection Error"
-    return res.status(200).json({ 
-      reply: `[System Update] I'm currently processing in Local Mode. Here's your business summary: ${businessContext}. (Note: AI service is temporarily unavailable: ${error.message})` 
+    return res.status(200).json({
+      reply: `[System Update] I'm currently processing in Local Mode. Here's your business summary: ${businessContext}. (Note: AI service is temporarily unavailable: ${error.message})`
     });
   }
 });
